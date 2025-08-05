@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Конструктор G-кода</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; }
+    input[type=number] { width: 80px; padding: 5px; margin-right: 10px; }
+    button { padding: 6px 12px; }
+    canvas { border: 1px solid #ccc; background: #f9f9f9; display: block; margin-top: 10px; }
+    pre { background: #eee; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
+    ul { padding-left: 20px; }
+    li { margin-bottom: 5px; }
+    label { user-select: none; }
+  </style>
+</head>
+<body>
+
+<h2>Конструктор G-кода</h2>
+
+<div>
+  <label>X: <input type="number" step="0.001" id="inputX" /></label>
+  <label>Z: <input type="number" step="0.001" id="inputZ" /></label>
+  <button id="addPointBtn">Добавить точку</button>
+  <label><input type="checkbox" id="closeContour" /> Замкнуть контур</label>
+</div>
+
+<canvas id="canvas" width="500" height="300"></canvas>
+
+<h3>Точки</h3>
+<ul id="pointsList"></ul>
+
+<h3>Сгенерированный G-код</h3>
+<pre id="gcode"></pre>
+
+<script>
+  const points = [];
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const inputX = document.getElementById('inputX');
+  const inputZ = document.getElementById('inputZ');
+  const addPointBtn = document.getElementById('addPointBtn');
+  const pointsList = document.getElementById('pointsList');
+  const gcodePre = document.getElementById('gcode');
+  const closeContourCheckbox = document.getElementById('closeContour');
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (points.length === 0) return;
+
+    const xs = points.map(p => p.x);
+    const zs = points.map(p => p.z);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minZ = Math.min(...zs);
+    const maxZ = Math.max(...zs);
+
+    const padding = 20;
+    const scaleX = (canvas.width - 2 * padding) / (maxX - minX || 1);
+    const scaleZ = (canvas.height - 2 * padding) / (maxZ - minZ || 1);
+
+    function transform(p) {
+      return {
+        x: padding + (p.x - minX) * scaleX,
+        y: canvas.height - (padding + (p.z - minZ) * scaleZ)
+      };
+    }
+
+    ctx.beginPath();
+    const first = transform(points[0]);
+    ctx.moveTo(first.x, first.y);
+    for (let i = 1; i < points.length; i++) {
+      const pt = transform(points[i]);
+      ctx.lineTo(pt.x, pt.y);
+    }
+    if (closeContourCheckbox.checked) {
+      ctx.lineTo(first.x, first.y);
+    }
+    ctx.strokeStyle = 'blue';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    for (const p of points) {
+      const pt = transform(p);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'red';
+      ctx.fill();
+    }
+  }
+
+  function updatePointsList() {
+    pointsList.innerHTML = '';
+    points.forEach((p, i) => {
+      const li = document.createElement('li');
+      li.textContent = `#${i+1} X: ${p.x.toFixed(3)}  Z: ${p.z.toFixed(3)}`;
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Удалить';
+      delBtn.style.marginLeft = '10px';
+      delBtn.onclick = () => {
+        points.splice(i, 1);
+        updatePointsList();
+        generateGCode();
+        draw();
+      };
+      li.appendChild(delBtn);
+      pointsList.appendChild(li);
+    });
+  }
+
+  function generateGCode() {
+    if (points.length === 0) {
+      gcodePre.textContent = '';
+      return;
+    }
+    let code = `%
+O1000 (Программа токарного станка Okuma)
+G20 (Дюймы)
+G00 X0 Z0`;
+    points.forEach(p => {
+      code += `
+G01 X${p.x.toFixed(3)} Z${p.z.toFixed(3)} F0.01`;
+    });
+    if (closeContourCheckbox.checked) {
+      const first = points[0];
+      code += `
+G01 X${first.x.toFixed(3)} Z${first.z.toFixed(3)} F0.01`;
+    }
+    code += `
+M30
+%`;
+    gcodePre.textContent = code;
+  }
+
+  addPointBtn.onclick = () => {
+    const x = parseFloat(inputX.value);
+    const z = parseFloat(inputZ.value);
+    if (isNaN(x) || isNaN(z)) {
+      alert('Введите корректные числа для X и Z');
+      return;
+    }
+    points.push({ x, z });
+    inputX.value = '';
+    inputZ.value = '';
+    updatePointsList();
+    generateGCode();
+    draw();
+  };
+
+  closeContourCheckbox.onchange = () => {
+    generateGCode();
+    draw();
+  };
+
+  draw();
+  generateGCode();
+</script>
+
+</body>
+</html>
